@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>THE HOLLOW</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;1,300&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:        #060a0a;
+    --deep-teal:   #0e2326;
+    --bioglow:     #5eead4;
+    --amber:       #f0a04b;
+    --pale:        #e8f1ef;
+    --pale-dim:    rgba(232,241,239,0.55);
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html, body{
+    width:100%; height:100%;
+    background:var(--void);
+    overflow:hidden;
+    font-family:'IBM Plex Mono', monospace;
+    color:var(--pale);
+    cursor:default;
+  }
+
+  canvas{ display:block; }
+
+  #scene-canvas{
+    position:fixed; inset:0; z-index:1;
+  }
+
+  /* ---------- Vignette ---------- */
+  #vignette{
+    position:fixed; inset:0; z-index:5; pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* ---------- Title screen ---------- */
+  #title-screen{
+    position:fixed; inset:0; z-index:20;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at 50% 40%, rgba(14,35,38,0.55), var(--void) 75%);
+    cursor:pointer;
+    transition:opacity 0.9s ease;
+  }
+  #title-screen.hidden{ opacity:0; pointer-events:none; }
+
+  .title-inner{
+    text-align:center;
+    max-width:560px;
+    padding:0 24px;
+  }
+
+  .eyebrow{
+    font-size:11px;
+    letter-spacing:0.32em;
+    text-transform:uppercase;
+    color:var(--bioglow);
+    opacity:0.75;
+    margin-bottom:22px;
+  }
+
+  .game-title{
+    font-family:'Spectral', serif;
+    font-weight:300;
+    font-style:italic;
+    font-size:clamp(48px, 10vw, 92px);
+    letter-spacing:0.04em;
+    color:var(--pale);
+    text-shadow:0 0 40px rgba(94,234,212,0.35);
+    margin-bottom:28px;
+    line-height:1;
+  }
+
+  .deck{
+    font-family:'Spectral', serif;
+    font-weight:300;
+    font-size:16px;
+    line-height:1.7;
+    color:var(--pale-dim);
+    margin-bottom:40px;
+  }
+
+  .controls-row{
+    display:flex; justify-content:center; gap:28px;
+    font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--pale-dim);
+    margin-bottom:34px;
+  }
+  .controls-row span b{ color:var(--bioglow); font-weight:500; }
+
+  .enter-prompt{
+    font-size:13px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--amber);
+    animation:pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse{
+    0%,100%{ opacity:0.55; }
+    50%{ opacity:1; }
+  }
+
+  /* ---------- Pause overlay ---------- */
+  #pause-screen{
+    position:fixed; inset:0; z-index:19;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(6,10,10,0.78);
+    opacity:0; pointer-events:none;
+    transition:opacity 0.5s ease;
+  }
+  #pause-screen.visible{ opacity:1; pointer-events:all; cursor:pointer; }
+  #pause-screen .label{
+    font-family:'Spectral', serif; font-style:italic; font-weight:300;
+    font-size:28px; color:var(--pale-dim); letter-spacing:0.05em;
+  }
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:fixed; top:28px; left:32px; z-index:10;
+    font-size:11px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--pale-dim);
+    opacity:0; transition:opacity 0.6s ease;
+    pointer-events:none;
+  }
+  #hud.visible{ opacity:1; }
+  #hud .count{ color:var(--bioglow); }
+
+  /* ---------- Crosshair ---------- */
+  #crosshair{
+    position:fixed; top:50%; left:50%; z-index:10;
+    width:5px; height:5px; margin:-2.5px 0 0 -2.5px;
+    border-radius:50%;
+    background:rgba(232,241,239,0.5);
+    opacity:0; transition:opacity 0.6s ease;
+    pointer-events:none;
+  }
+  #crosshair.visible{ opacity:1; }
+
+  /* ---------- Fragment reveal ---------- */
+  #fragment{
+    position:fixed; bottom:64px; left:50%; z-index:15;
+    transform:translateX(-50%) translateY(12px);
+    max-width:480px;
+    text-align:center;
+    padding:0 28px;
+    opacity:0;
+    transition:opacity 1s ease, transform 1s ease;
+    pointer-events:none;
+  }
+  #fragment.visible{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #fragment .num{
+    font-size:10px; letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--amber); margin-bottom:10px;
+  }
+  #fragment .text{
+    font-family:'Spectral', serif; font-style:italic; font-weight:300;
+    font-size:19px; line-height:1.6; color:var(--pale);
+  }
+
+  /* ---------- Complete message ---------- */
+  #complete{
+    position:fixed; top:32px; left:50%; z-index:15;
+    transform:translateX(-50%) translateY(-8px);
+    font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--bioglow);
+    opacity:0; transition:opacity 1s ease, transform 1s ease;
+    pointer-events:none;
+  }
+  #complete.visible{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (prefers-reduced-motion: reduce){
+    .enter-prompt{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene-canvas"></canvas>
+<div id="vignette"></div>
+
+<div id="hud">
+  fragments recovered&nbsp; <span class="count"><span id="count-num">0</span>/8</span>
+</div>
+
+<div id="crosshair"></div>
+
+<div id="fragment">
+  <div class="num" id="fragment-num"></div>
+  <div class="text" id="fragment-text"></div>
+</div>
+
+<div id="complete">all fragments recovered &mdash; the hollow is yours now</div>
+
+<div id="title-screen">
+  <div class="title-inner">
+    <div class="eyebrow">an exploration</div>
+    <div class="game-title">The Hollow</div>
+    <div class="deck">Something grows in the dark below the dead oak.<br/>Eight lights remain of whoever planted it.</div>
+    <div class="controls-row">
+      <span><b>WASD</b> move</span>
+      <span><b>mouse</b> look</span>
+      <span><b>esc</b> pause</span>
+    </div>
+    <div class="enter-prompt">click to enter</div>
+  </div>
+</div>
+
+<div id="pause-screen">
+  <div class="label">paused &mdash; click to return</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+/* ============ palette ============ */
+const COLOR_VOID   = 0x060a0a;
+const COLOR_FOG    = 0x0a1818;
+const COLOR_BIO    = 0x5eead4;
+const COLOR_AMBER  = 0xf0a04b;
+const COLOR_MOON   = 0x9fc6cf;
+
+/* ============ renderer / scene / camera ============ */
+const canvas = document.getElementById('scene-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(COLOR_VOID);
+scene.fog = new THREE.FogExp2(COLOR_FOG, 0.028);
+
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth/window.innerHeight, 0.1, 200);
+camera.position.set(0, 1.7, 6);
+
+/* ============ lighting ============ */
+const hemi = new THREE.HemisphereLight(0x21474a, 0x05080a, 0.65);
+scene.add(hemi);
+
+const moon = new THREE.DirectionalLight(COLOR_MOON, 0.35);
+moon.position.set(-20, 30, -10);
+scene.add(moon);
+
+/* ============ ground ============ */
+const groundGeo = new THREE.PlaneGeometry(220, 220, 1, 1);
+const groundMat = new THREE.MeshStandardMaterial({ color:0x0a1413, roughness:0.95, metalness:0.0 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+/* ============ seeded random ============ */
+let seed = 1337;
+function rand(){
+  seed = (seed * 1103515245 + 12345) % 2147483648;
+  return seed / 2147483648;
+}
+
+/* ============ forest ============ */
+const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 3.2, 6);
+const trunkMat = new THREE.MeshStandardMaterial({ color:0x0c1a18, roughness:1 });
+
+const canopyGeo = new THREE.IcosahedronGeometry(1, 0);
+function canopyMat(hue){
+  return new THREE.MeshStandardMaterial({
+    color: hue === 'bio' ? COLOR_BIO : COLOR_AMBER,
+    emissive: hue === 'bio' ? COLOR_BIO : COLOR_AMBER,
+    emissiveIntensity: 0.55,
+    roughness:0.5,
+    metalness:0.1,
+    transparent:true,
+    opacity:0.88
+  });
+}
+
+const treeGroup = new THREE.Group();
+const TREE_COUNT = 150;
+for(let i=0; i<TREE_COUNT; i++){
+  const angle = rand() * Math.PI * 2;
+  const radius = 6 + rand() * 64;
+  const x = Math.cos(angle) * radius;
+  const z = Math.sin(angle) * radius;
+
+  const scale = 0.6 + rand() * 1.1;
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  trunk.position.set(x, (3.2*scale)/2, z);
+  trunk.scale.set(scale, scale, scale);
+  treeGroup.add(trunk);
+
+  const isBio = rand() > 0.22;
+  const canopy = new THREE.Mesh(canopyGeo, canopyMat(isBio ? 'bio' : 'amber'));
+  const cScale = scale * (0.55 + rand()*0.5);
+  canopy.scale.set(cScale, cScale, cScale);
+  canopy.position.set(x, 3.2*scale + cScale*0.6, z);
+  canopy.rotation.set(rand()*Math.PI, rand()*Math.PI, rand()*Math.PI);
+  treeGroup.add(canopy);
+
+  // occasional ancient tree carries a real light source
+  if(i % 9 === 0){
+    const glow = new THREE.PointLight(isBio ? COLOR_BIO : COLOR_AMBER, 1.1, 9, 2);
+    glow.position.copy(canopy.position);
+    treeGroup.add(glow);
+  }
+}
+scene.add(treeGroup);
+
+/* ============ drifting motes ============ */
+const MOTE_COUNT = 500;
+const motePositions = new Float32Array(MOTE_COUNT*3);
+const moteSpeeds = new Float32Array(MOTE_COUNT);
+for(let i=0;i<MOTE_COUNT;i++){
+  motePositions[i*3]   = (rand()-0.5)*120;
+  motePositions[i*3+1] = rand()*14;
+  motePositions[i*3+2] = (rand()-0.5)*120;
+  moteSpeeds[i] = 0.15 + rand()*0.35;
+}
+const moteGeo = new THREE.BufferGeometry();
+moteGeo.setAttribute('position', new THREE.BufferAttribute(motePositions, 3));
+const moteMat = new THREE.PointsMaterial({
+  color: COLOR_BIO, size:0.06, transparent:true, opacity:0.5,
+  blending:THREE.AdditiveBlending, depthWrite:false
+});
+const motes = new THREE.Points(moteGeo, moteMat);
+scene.add(motes);
+
+/* ============ memory orbs ============ */
+const FRAGMENTS = [
+  "They told me nothing grows in the Hollow. They were almost right.",
+  "I buried the first one beneath the dead oak. It opened by morning.",
+  "Light tastes like static when you're this close to it.",
+  "The trees remember every name spoken near their roots.",
+  "I stopped counting the nights. The glow doesn't keep time here.",
+  "Someone else has been here before me. Their footprints glow too.",
+  "If you listen long enough, the Hollow hums your name back.",
+  "I am not lost. I planted myself here on purpose."
+];
+
+const orbPositions = [
+  [10, -14], [-22, 8], [30, 22], [-14, -28],
+  [4, 38], [-36, -6], [18, -40], [-30, 30]
+];
+
+const orbGeo = new THREE.IcosahedronGeometry(0.34, 1);
+const orbHaloGeo = new THREE.IcosahedronGeometry(0.62, 1);
+
+const orbs = [];
+orbPositions.forEach((p, i)=>{
+  const isBio = i % 2 === 0;
+  const color = isBio ? COLOR_BIO : COLOR_AMBER;
+
+  const mat = new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: 1.4, roughness:0.3
+  });
+  const orb = new THREE.Mesh(orbGeo, mat);
+  orb.position.set(p[0], 1.3, p[1]);
+  scene.add(orb);
+
+  const haloMat = new THREE.MeshBasicMaterial({
+    color, transparent:true, opacity:0.16, blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const halo = new THREE.Mesh(orbHaloGeo, haloMat);
+  orb.add(halo);
+
+  const light = new THREE.PointLight(color, 1.6, 10, 2);
+  orb.add(light);
+
+  orbs.push({
+    mesh: orb, baseY: 1.3, phase: rand()*Math.PI*2,
+    collected:false, text: FRAGMENTS[i], index: i+1
+  });
+});
+
+/* ============ post-processing (bloom) ============ */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.85,   // strength
+  0.5,    // radius
+  0.25    // threshold
+);
+composer.addPass(bloomPass);
+
+/* ============ controls / movement ============ */
+const controls = new PointerLockControls(camera, document.body);
+
+const titleScreen = document.getElementById('title-screen');
+const pauseScreen = document.getElementById('pause-screen');
+const hud = document.getElementById('hud');
+const crosshair = document.getElementById('crosshair');
+let hasStarted = false;
+
+titleScreen.addEventListener('click', ()=>{ controls.lock(); });
+pauseScreen.addEventListener('click', ()=>{ controls.lock(); });
+
+controls.addEventListener('lock', ()=>{
+  if(!hasStarted){
+    hasStarted = true;
+    titleScreen.classList.add('hidden');
+    hud.classList.add('visible');
+    crosshair.classList.add('visible');
+  }
+  pauseScreen.classList.remove('visible');
+});
+
+controls.addEventListener('unlock', ()=>{
+  if(hasStarted){
+    pauseScreen.classList.add('visible');
+  }
+});
+
+const move = { forward:false, backward:false, left:false, right:false };
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+
+document.addEventListener('keydown', (e)=>{
+  switch(e.code){
+    case 'KeyW': case 'ArrowUp':    move.forward = true; break;
+    case 'KeyS': case 'ArrowDown':  move.backward = true; break;
+    case 'KeyA': case 'ArrowLeft':  move.left = true; break;
+    case 'KeyD': case 'ArrowRight': move.right = true; break;
+  }
+});
+document.addEventListener('keyup', (e)=>{
+  switch(e.code){
+    case 'KeyW': case 'ArrowUp':    move.forward = false; break;
+    case 'KeyS': case 'ArrowDown':  move.backward = false; break;
+    case 'KeyA': case 'ArrowLeft':  move.left = false; break;
+    case 'KeyD': case 'ArrowRight': move.right = false; break;
+  }
+});
+
+const WORLD_BOUND = 78;
+
+/* ============ fragment reveal UI ============ */
+const fragmentEl = document.getElementById('fragment');
+const fragmentNum = document.getElementById('fragment-num');
+const fragmentText = document.getElementById('fragment-text');
+const countNum = document.getElementById('count-num');
+const completeEl = document.getElementById('complete');
+let fragmentTimeout = null;
+let collectedCount = 0;
+
+function revealFragment(orbData){
+  fragmentNum.textContent = `entry ${orbData.index} / 8`;
+  fragmentText.textContent = orbData.text;
+  fragmentEl.classList.add('visible');
+  clearTimeout(fragmentTimeout);
+  fragmentTimeout = setTimeout(()=>{
+    fragmentEl.classList.remove('visible');
+  }, 6500);
+}
+
+function collectOrb(orbData){
+  orbData.collected = true;
+  orbData.mesh.visible = false;
+  collectedCount++;
+  countNum.textContent = collectedCount;
+  revealFragment(orbData);
+  if(collectedCount === orbs.length){
+    setTimeout(()=>{ completeEl.classList.add('visible'); }, 1200);
+  }
+}
+
+/* ============ animation loop ============ */
+const clock = new THREE.Clock();
+let bobTime = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.1);
+  const elapsed = clock.elapsedTime;
+
+  // motes drift upward and loop
+  const posAttr = moteGeo.attributes.position;
+  for(let i=0;i<MOTE_COUNT;i++){
+    let y = posAttr.array[i*3+1] + moteSpeeds[i]*delta;
+    if(y > 14) y = 0;
+    posAttr.array[i*3+1] = y;
+  }
+  posAttr.needsUpdate = true;
+
+  // orb bob + pulse
+  orbs.forEach(o=>{
+    if(o.collected) return;
+    o.mesh.position.y = o.baseY + Math.sin(elapsed*1.3 + o.phase)*0.18;
+    o.mesh.rotation.y += delta*0.4;
+    const pulse = 1.1 + Math.sin(elapsed*2.2 + o.phase)*0.35;
+    o.mesh.material.emissiveIntensity = pulse;
+  });
+
+  if(controls.isLocked){
+    // movement
+    direction.z = Number(move.forward) - Number(move.backward);
+    direction.x = Number(move.right) - Number(move.left);
+    direction.normalize();
+
+    const speed = 4.2;
+    velocity.x = direction.x * speed;
+    velocity.z = direction.z * speed;
+
+    if(move.forward || move.backward) controls.moveForward(velocity.z * delta);
+    if(move.left || move.right) controls.moveRight(velocity.x * delta);
+
+    // world bounds — gentle push back toward center
+    const pos = controls.getObject().position;
+    const distFromCenter = Math.hypot(pos.x, pos.z);
+    if(distFromCenter > WORLD_BOUND){
+      const pull = (distFromCenter - WORLD_BOUND) * 0.06;
+      pos.x -= (pos.x/distFromCenter) * pull;
+      pos.z -= (pos.z/distFromCenter) * pull;
+    }
+
+    // subtle walk bob
+    const isMoving = move.forward || move.backward || move.left || move.right;
+    if(isMoving) bobTime += delta * 6.5;
+    pos.y = 1.7 + (isMoving ? Math.sin(bobTime)*0.045 : 0);
+
+    // collection check
+    orbs.forEach(o=>{
+      if(o.collected) return;
+      const dx = pos.x - o.mesh.position.x;
+      const dz = pos.z - o.mesh.position.z;
+      if(Math.hypot(dx, dz) < 2.4) collectOrb(o);
+    });
+  }
+
+  composer.render();
+}
+animate();
+
+/* ============ resize ============ */
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
